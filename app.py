@@ -1,7 +1,8 @@
 from __future__ import print_function
 import sys
+import config
 from flask import Flask
-from flask.ext.login import LoginManager, login_required, login_user, logout_user
+from flask.ext.login import LoginManager, login_required, login_user, logout_user,current_user
 from flask import render_template, redirect, url_for, request
 import os
 import hashlib
@@ -23,21 +24,43 @@ login_manager = LoginManager(app)
 def home():
     return render_template("home.html")
 
+@app.route("/dashboard")
+@login_required
+def dashboard():
+  return render_template("dashboard.html")
+
 @app.route("/account")
 @login_required
 def account():
-    return "you are logged in"
+    tables = DB.get_tables(current_user.get_id())
+    return render_template("account.html", tables=tables)
 
-@app.route("/login", methods =["POST"])
+@app.route("/account/createtable", methods=["POST"])
+@login_required
+def account_createtable():
+  tablename = request.form.get("tablenumber")
+  tableid = DB.add_table(tablename, current_user.get_id())
+  new_url = config.base_url + "newrequest/" + tableid
+  DB.update_table(tableid, new_url)
+  return redirect(url_for('account'))
+
+@app.route("/account/deletetable")
+@login_required
+def account_deletetable():
+  tableid = request.args.get("tableid")
+  DB.delete_table(tableid)
+  return redirect(url_for('account'))
+
+@app.route("/login", methods=["POST"])
 def login():
-    email=request.form.get("email")
-    password=request.form.get("password")
+    email = request.form.get("email")
+    password = request.form.get("password")
     stored_user = DB.get_user(email)
     if stored_user and PH.validate_password(password, stored_user['salt'], stored_user['hashed']):
-        user=User(email)
+        user = User(email)
         login_user(user, remember=True)
         return redirect(url_for('account'))
-    return home()
+    return redirect(url_for('home'))
 
 @app.route("/logout")
 def logout():
