@@ -4,6 +4,7 @@ import config
 from flask import Flask
 from flask.ext.login import LoginManager, login_required, login_user, logout_user,current_user
 from flask import render_template, redirect, url_for, request
+import datetime
 import os
 import hashlib
 import base64
@@ -11,9 +12,11 @@ import base64
 from passwordhelper import PasswordHelper
 from mockdbhelper import MockDBHelper as DBHelper
 from user import User
+from bitlyhelper import BitlyHelper
 
 DB = DBHelper()
 PH = PasswordHelper()
+BH = BitlyHelper()
 
 app = Flask(__name__)
 app.secret_key = 'eQjBXmwhGYsw2pNshN938WPPWA+JxV+95GIvNGEEVNSLRBjeROx+6Jkne4yFrhdEspat7TK8nMVz\
@@ -27,7 +30,19 @@ def home():
 @app.route("/dashboard")
 @login_required
 def dashboard():
-  return render_template("dashboard.html")
+    now = datetime.datetime.now()
+    requests = DB.get_requests(current_user.get_id())
+    for req in requests:
+        deltaseconds = (now - req['time']).seconds
+        req['wait_minutes'] = "{}.{}".format((deltaseconds/60), str(deltaseconds % 60).zfill(2))
+    return render_template("dashboard.html", requests=requests)
+
+@app.route("/dashboard/resolve")
+@login_required
+def dashboard_resolve():
+  request_id = request.args.get("request_id")
+  DB.delete_request(request_id)
+  return redirect(url_for('dashboard'))
 
 @app.route("/account")
 @login_required
@@ -40,7 +55,7 @@ def account():
 def account_createtable():
   tablename = request.form.get("tablenumber")
   tableid = DB.add_table(tablename, current_user.get_id())
-  new_url = config.base_url + "newrequest/" + tableid
+  new_url = BH.shorten_url(config.base_url + "newrequest/" + tableid)
   DB.update_table(tableid, new_url)
   return redirect(url_for('account'))
 
@@ -50,6 +65,11 @@ def account_deletetable():
   tableid = request.args.get("tableid")
   DB.delete_table(tableid)
   return redirect(url_for('account'))
+
+@app.route("/newrequest/<tid>")
+def new_request(tid):
+  DB.add_request(tid, datetime.datetime.now())
+  return "Your request has been logged and a waiter will be withyou shortly"
 
 @app.route("/login", methods=["POST"])
 def login():
